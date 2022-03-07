@@ -4,7 +4,6 @@ To start:
 -npm i
 
 -add your mongodb in config.env
-=======
 
 -add your mongodb in config.env and config.js
 
