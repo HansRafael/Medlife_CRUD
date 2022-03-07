@@ -1,4 +1,8 @@
-var Userdb = require('../model/model')
+var Userdb = require('../model/model');
+var UserAuth = require('../model/user');
+var bycrpt  = require('bcryptjs');
+var jwt = require('jsonwebtoken');
+const user = require('../model/user');
 
 // create and save new user
 exports.create = (req,res)=>{
@@ -81,9 +85,27 @@ exports.find_CPF = (req,res) =>{
     }else{
         res.status(500).send({message : "erro: must CPF"})
     }
+}
 
+exports.find_video = (req,res) => {
+    if(req.query.id && req.query.video){
+        const id = req.query.id;
+        const video = req.query.video;
 
-
+        Userdb.findOne({cpf:id})
+            .then(data =>{
+                if(!data){
+                    res.status(404).send({message: "Not found doctor with cpf" + id})
+                } else {
+                    res.send(data.url[video])
+                }
+            })
+            .catch(err => {
+                res.status(500).send({message: "error retrieving doctor with cpf "+ id})
+            })
+    }else{
+        res.status(500).send({messega: "error: must cpf and video"})
+    }
 }
 
 // Update a new idetified user by user id
@@ -128,4 +150,79 @@ exports.delete = (req, res)=>{
                 message: "Could not delete User with id=" + id
             });
         });
+}
+
+/* ------------------- USER AUTH ------------------------ */
+
+
+exports.register_user = async (req,res) => {
+    try {
+        console.log(req.body)
+        const { lastName, password} = req.body;
+        const firstName = req.body.firstName;
+        const email = req.body.email;
+        if (!(email && password && firstName && lastName)) {
+            res.status(400).send({message : "all input are rrequired!"});
+        }
+
+        const oldUser = await UserAuth.findOne({email});
+        if(oldUser){
+            return res.status(409).send({message: `User ${email} already exist. Please Login`});
+        }
+
+        encryptedUserPassword = await bycrpt.hash(password,10);
+
+        const userAuth = await UserAuth.create({
+            first_name: firstName,
+            last_name: lastName,
+            email: email.toLowerCase(),
+            password: encryptedUserPassword,
+        });
+
+        const token = jwt.sign(
+            {userAuth_id: userAuth._id,email},
+            process.env.TOKEN_KEY,
+            {
+                expiresIn: "5h"
+            }
+        );
+
+        userAuth.token = token;
+
+        res.status(201).json(userAuth);
+
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+exports.login_user = async (req,res) =>{
+    try {
+        const {email, password} = req.body;
+
+        if(!(email && password)){
+            res.status(400).send({message: "All inputs are required"})
+        }
+        const userAuth = await UserAuth.findOne({email});
+        
+        var userPassword = userAuth.password.toString()
+        
+        if(userAuth && (await bycrpt.compare(password,userPassword))){
+            const token = jwt.sign(
+                {userAuth_id: userAuth._id, email},
+                process.env.TOKEN_KEY,
+                {
+                    expiresIn: "5h",
+                }
+            );
+
+            userAuth.token = token
+
+            return res.status(200).json(userAuth.token);
+        }
+        return res.status(400).send({message: "Invalid Credentials"});
+
+    } catch (error) {
+        console.log(error)   
+    }
 }
